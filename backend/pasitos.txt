@@ -1,0 +1,5 @@
+cd C:\projects\drug-graph-visualizer\backend
+venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --reload
+# Cuando termines -> deactivate
