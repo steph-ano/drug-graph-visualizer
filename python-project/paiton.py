@@ -114,10 +114,11 @@ def get_drug_info(df, drug_name):
     except IndexError:
         print(f"No se encontró información para '{drug_name}'.")
 
-def find_shortest_path(G, drug1, drug2):
+def find_shortest_path(G, drug1, drug2, visualize=True):
     """
     FUNCIONALIDAD 1: Usa Dijkstra para encontrar el camino más corto
     (el de mayor similitud acumulada) entre dos medicamentos.
+    Ahora con visualización opcional del grafo.
     """
     if drug1 not in G:
         print(f"Error: Medicamento '{drug1}' no encontrado en el grafo.")
@@ -127,13 +128,13 @@ def find_shortest_path(G, drug1, drug2):
         return
 
     print(f"\nBuscando el camino de mayor similitud (Dijkstra) entre '{drug1}' y '{drug2}'...")
-    
+
     try:
         # Usamos el 'cost' (1.1 - similitud) que creamos para Dijkstra
         path = nx.shortest_path(G, source=drug1, target=drug2, weight='cost')
         length = nx.shortest_path_length(G, source=drug1, target=drug2, weight='cost')
-        
-        print(f"\n---  ruta encontrada (Costo Total: {length:.2f}) ---")
+
+        print(f"\n--- Ruta encontrada (Costo Total: {length:.2f}) ---")
         for i, drug in enumerate(path):
             print(f"  {i+1}. {drug}")
             if i < len(path) - 1:
@@ -141,11 +142,129 @@ def find_shortest_path(G, drug1, drug2):
                 edge_data = G.get_edge_data(path[i], path[i+1])
                 sim = edge_data['similarity']
                 print(f"     | (Similitud: {sim * 100}%)")
-                
+
+        # Visualización del camino
+        if visualize:
+            plot_dijkstra_path(G, path)
+
     except nx.NetworkXNoPath:
         print(f"\nNo se encontró una ruta de relación entre '{drug1}' y '{drug2}'.")
     except Exception as e:
         print(f"Ocurrió un error inesperado: {e}")
+
+
+def plot_dijkstra_path(G, path):
+    """
+    Visualiza el camino encontrado por Dijkstra en el grafo.
+    Muestra el camino principal y algunos nodos adicionales del contexto.
+    """
+    print("\nGenerando visualización del camino Dijkstra...")
+
+    # Crear subgrafo: incluir nodos del camino + sus vecinos inmediatos
+    nodes_to_include = set(path)
+
+    # Agregar algunos vecinos para dar contexto (opcional, limitar para no saturar)
+    for node in path:
+        neighbors = list(G.neighbors(node))[:3]  # Max 3 vecinos por nodo
+        nodes_to_include.update(neighbors)
+
+    sub_g = G.subgraph(nodes_to_include)
+
+    # Configurar la figura
+    plt.figure(figsize=(14, 10))
+    pos = nx.spring_layout(sub_g, k=1.0, iterations=50, seed=42)
+
+    # Clasificar nodos
+    path_nodes = set(path)
+    origin = path[0]
+    destination = path[-1]
+    intermediate_nodes = path_nodes - {origin, destination}
+    context_nodes = nodes_to_include - path_nodes
+
+    # Dibujar nodos de contexto (grises)
+    if context_nodes:
+        nx.draw_networkx_nodes(sub_g, pos,
+                               nodelist=list(context_nodes),
+                               node_color='#CCCCCC',
+                               node_size=800,
+                               alpha=0.4)
+
+    # Dibujar nodos intermedios del camino (azules)
+    if intermediate_nodes:
+        nx.draw_networkx_nodes(sub_g, pos,
+                               nodelist=list(intermediate_nodes),
+                               node_color='#33A1FF',
+                               node_size=1500)
+
+    # Dibujar origen (verde)
+    nx.draw_networkx_nodes(sub_g, pos,
+                           nodelist=[origin],
+                           node_color='#28A745',
+                           node_size=2000)
+
+    # Dibujar destino (rojo)
+    nx.draw_networkx_nodes(sub_g, pos,
+                           nodelist=[destination],
+                           node_color='#DC3545',
+                           node_size=2000)
+
+    # Identificar aristas del camino
+    path_edges = [(path[i], path[i+1]) for i in range(len(path)-1)]
+    other_edges = [e for e in sub_g.edges() if e not in path_edges and (e[1], e[0]) not in path_edges]
+
+    # Dibujar aristas de contexto (grises, delgadas)
+    if other_edges:
+        nx.draw_networkx_edges(sub_g, pos,
+                               edgelist=other_edges,
+                               width=1,
+                               alpha=0.2,
+                               edge_color='#999999')
+
+    # Dibujar aristas del camino (rojas, gruesas)
+    nx.draw_networkx_edges(sub_g, pos,
+                           edgelist=path_edges,
+                           width=4,
+                           alpha=0.8,
+                           edge_color='#FF5733',
+                           arrows=True,
+                           arrowsize=20,
+                           arrowstyle='->')
+
+    # Etiquetas de nodos
+    nx.draw_networkx_labels(sub_g, pos,
+                            font_size=9,
+                            font_weight='bold',
+                            font_color='white')
+
+    # Etiquetas de similitud SOLO en las aristas del camino
+    edge_labels = {
+        (u, v): f"{sub_g[u][v]['similarity']*100:.0f}%"
+        for u, v in path_edges
+    }
+    nx.draw_networkx_edge_labels(sub_g, pos,
+                                 edge_labels=edge_labels,
+                                 font_color='#8B0000',
+                                 font_size=10,
+                                 font_weight='bold')
+
+    # Título y leyenda
+    plt.title(f"Camino Dijkstra: {origin} → {destination}\n" +
+              f"(Longitud: {len(path)} nodos, Costo total: {sum(1.1 - sub_g[path[i]][path[i+1]]['similarity'] for i in range(len(path)-1)):.2f})",
+              size=14, weight='bold')
+
+    # Crear leyenda manual
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='#28A745', label='Origen'),
+        Patch(facecolor='#DC3545', label='Destino'),
+        Patch(facecolor='#33A1FF', label='Camino intermedio'),
+        Patch(facecolor='#CCCCCC', alpha=0.4, label='Nodos relacionados')
+    ]
+    plt.legend(handles=legend_elements, loc='upper left')
+
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
 
 def find_alternatives(G, drug, top_n=10):
     """
@@ -333,7 +452,10 @@ def main_menu():
                 if drug1 == drug2:
                     print("Error: Los medicamentos deben ser diferentes.")
                 else:
-                    find_shortest_path(G, drug1, drug2)
+                    # Preguntar si desea visualizar
+                    viz_choice = input("¿Desea ver el grafo del camino? (s/n): ").strip().lower()
+                    visualize = (viz_choice == 's')
+                    find_shortest_path(G, drug1, drug2, visualize=visualize)
             except Exception as e:
                 print(f"Error en la entrada: {e}")
 
